@@ -103,15 +103,25 @@ Custom inline policy for ssm:StartSession
 
 Validation Checklist
 VPC and subnets created
+
 Security groups configured with proper rules
+
 DocumentDB cluster available
+
 ElastiCache Redis cluster available
+
 ECR repositories created
+
 GitHub Actions workflow successfully builds and pushes images
+
 EC2 Launch Template and ASG configured
+
 ALB created and healthy
+
 Ansible can connect via SSM and deploy application
+
 Application accessible via ALB DNS name
+
 Health checks passing (/healthz endpoint)
 
 ************************************
