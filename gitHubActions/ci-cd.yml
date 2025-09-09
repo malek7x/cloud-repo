@@ -1,0 +1,70 @@
+name: Build, Scan, and Push to ECR
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  BACKEND_REPO: ${{ secrets.ECR_REGISTRY }}/ecom/backend
+  FRONTEND_REPO: ${{ secrets.ECR_REGISTRY }}/ecom/frontend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' 
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build, tag, and push backend image
+      run: |
+        # Build from the ROOT directory (./), using the Dockerfile-end file.
+        # The build context is the root, so it can see package.json and the backend/ folder.
+        docker build -f Dockerfile-end -t $BACKEND_REPO:latest -t $BACKEND_REPO:${{ github.sha }} ./
+        docker push $BACKEND_REPO --all-tags
+
+    - name: Run Trivy vulnerability scanner on backend
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '$BACKEND_REPO:latest'
+        format: 'sarif'
+        output: 'trivy-backend-results.sarif'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Build, tag, and push frontend image
+      run: |
+        # Build from the frontend directory, using its Dockerfile-front
+        cd frontend
+        docker build -f Dockerfile-front -t $FRONTEND_REPO:latest -t $FRONTEND_REPO:${{ github.sha }} ./
+        docker push $FRONTEND_REPO --all-tags
+
+    - name: Run Trivy vulnerability scanner on frontend
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: '$FRONTEND_REPO:latest'
+        format: 'sarif'
+        output: 'trivy-frontend-results.sarif'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Upload Trivy scan results
+      uses: actions/upload-artifact@v4
+      with:
+        name: trivy-scan-results
+        path: |
+          trivy-backend-results.sarif
+          trivy-frontend-results.sarif

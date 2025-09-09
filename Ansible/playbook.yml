@@ -1,0 +1,79 @@
+#This playbook sets up a server to run a Dockerized application
+#It installs Docker, logs into AWS ECR, and deploys the application using Docker Compose
+# It assumes the server has an IAM role with permissions to access ECR
+# The ECR registry URL is passed as a variable from the CI/CD pipeline
+# The application consists of a backend and frontend service
+# The backend service uses an environment file for configuration
+
+#The playbook is rewritten by claude ai for optimization and clarity.
+---
+- name: Configure application server
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    ecr_registry: "{{ secrets.ECR_REGISTRY }}"  # Will be passed from CI/CD
+    backend_image: "{{ ecr_registry }}/ecom-backend:latest"
+    frontend_image: "{{ ecr_registry }}/ecom-frontend:latest"
+
+  tasks:
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
+
+    - name: Install required system packages
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+        state: present
+
+    - name: Ensure Docker service is started and enabled
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Login to ECR
+      community.docker.ecr_login:
+        registry_url: "{{ ecr_registry }}"
+        # Uses the instance's IAM role for permissions automatically
+
+    - name: Create directory for app
+      file:
+        path: /opt/myapp
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+
+    - name: Copy Docker Compose file to server
+      copy:
+        content: |
+          version: '3.8'
+          services:
+            backend:
+              image: {{ backend_image }}
+              env_file: .env
+              ports:
+                - "3000:3000"
+            frontend:
+              image: {{ frontend_image }}
+              ports:
+                - "80:80"
+        dest: /opt/myapp/docker-compose.yml
+        owner: ubuntu
+        group: ubuntu
+
+    - name: Start the application with Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: /opt/myapp
+        state: present
+        pull: yes
+        restarted: yes
